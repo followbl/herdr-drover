@@ -1,0 +1,19 @@
+LICENSE
+  s_78c930811fd3dc::t_12863b138e3e77 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "3984f97d82755330e6be7b0bf8c1aba2ca7fb1cb",
+  "prompts": {},
+  "sessions": {
+    "s_78c930811fd3dc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2dadf544-b5b1-47a7-aec4-386dc178b0e8",
+        "model": "grok-4.6"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    }
+  }
+}
