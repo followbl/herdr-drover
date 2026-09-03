@@ -1,0 +1,52 @@
+id = "followbl.hold-t"
+name = "Hold T"
+version = "0.2.0"
+min_herdr_version = "0.7.5"
+description = "Hold Super+T to cycle Herdr tabs by recency; release to land. Arrow up for New Tab."
+platforms = ["linux", "macos"]
+
+[[startup]]
+command = ["python3", "hook.py"]
+
+[[actions]]
+id = "open"
+title = "Hold T"
+description = "Open the tab switcher, or cycle to the next tab if it is already open"
+contexts = ["global", "workspace"]
+command = ["python3", "-u", "open.py"]
+
+[[panes]]
+id = "switcher"
+title = "Tabs"
+placement = "popup"
+width = "78%"
+height = "72%"
+command = ["python3", "-u", "switcher.py"]
+
+[[events]]
+on = "tab.focused"
+command = ["python3", "hook.py"]
+
+[[events]]
+on = "tab.created"
+command = ["python3", "hook.py"]
+
+[[events]]
+on = "tab.closed"
+command = ["python3", "hook.py"]
+
+[[events]]
+on = "tab.renamed"
+command = ["python3", "hook.py"]
+
+[[events]]
+on = "pane.created"
+command = ["python3", "hook.py"]
+
+[[events]]
+on = "pane.moved"
+command = ["python3", "hook.py"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["python3", "hook.py"]
