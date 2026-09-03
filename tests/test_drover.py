@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for Hold T. Stdlib unittest only."""
+"""Unit tests for Drover. Stdlib unittest only."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import hook  # noqa: E402
+import keys  # noqa: E402
 import lib  # noqa: E402
 import switcher  # noqa: E402
 
@@ -237,13 +238,50 @@ class SwitcherParserTests(unittest.TestCase):
 class ManifestTests(unittest.TestCase):
     def test_required_fields(self) -> None:
         text = (ROOT / "herdr-plugin.toml").read_text(encoding="utf-8")
-        self.assertIn('id = "followbl.hold-t"', text)
-        self.assertIn('name = "Hold T"', text)
+        self.assertIn('id = "followbl.drover"', text)
+        self.assertIn('name = "Drover"', text)
         self.assertIn("[[actions]]", text)
         self.assertIn("[[panes]]", text)
         self.assertIn('id = "open"', text)
+        self.assertIn('id = "cycle-prev"', text)
         self.assertIn('id = "switcher"', text)
+        self.assertIn("[keybindings]", text)
         self.assertIn("min_herdr_version", text)
+
+
+class KeybindingTests(unittest.TestCase):
+    def test_normalize_chords(self) -> None:
+        self.assertEqual(keys.normalize_key("ctrl+shift+t"), "C-S-t")
+        self.assertEqual(keys.normalize_key("C-S-t"), "C-S-t")
+        self.assertEqual(keys.normalize_key("S-Tab"), "S-Tab")
+        self.assertEqual(keys.normalize_key("escape"), "Esc")
+        self.assertEqual(keys.normalize_key("C-p"), "C-p")
+
+    def test_default_keymap_select_and_cycle(self) -> None:
+        mapping = keys.keymap(keys.DEFAULT_KEYBINDINGS)
+        self.assertEqual(mapping["Enter"], "select")
+        self.assertEqual(mapping["C-S-t"], "cycle")
+        self.assertEqual(mapping["Up"], "move_up")
+
+    def test_user_override_replaces_action_keys(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        override = Path(tmp.name) / "keybindings.toml"
+        override.write_text('[keybindings]\nmove_up = ["k"]\n', encoding="utf-8")
+        with mock.patch.dict(
+            os.environ,
+            {"HERDR_PLUGIN_ROOT": str(ROOT), "HERDR_PLUGIN_CONFIG_DIR": tmp.name},
+        ):
+            mapping = keys.keymap()
+        self.assertEqual(mapping.get("k"), "move_up")
+        self.assertNotEqual(mapping.get("Up"), "move_up")
+        self.assertEqual(mapping["Enter"], "select")
+
+    def test_action_for_event(self) -> None:
+        mapping = keys.keymap(keys.DEFAULT_KEYBINDINGS)
+        self.assertEqual(keys.action_for_event("enter", mapping), "select")
+        self.assertEqual(keys.action_for_event("ctrl+shift+t", mapping), "cycle")
+        self.assertEqual(keys.action_for_char("\x03", mapping), "force_quit")
 
 
 if __name__ == "__main__":

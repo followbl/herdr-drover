@@ -12,7 +12,7 @@ from lib import herdr_bin, send_ipc
 
 
 def open_pane() -> int:
-    plugin = os.environ.get("HERDR_PLUGIN_ID") or "followbl.hold-t"
+    plugin = os.environ.get("HERDR_PLUGIN_ID") or "followbl.drover"
     result = subprocess.run(
         [
             herdr_bin(),

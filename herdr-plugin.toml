@@ -1,6 +1,6 @@
-id = "followbl.hold-t"
-name = "Hold T"
-version = "0.2.0"
+id = "followbl.drover"
+name = "Drover"
+version = "0.3.0"
 min_herdr_version = "0.7.5"
 description = "Hold Super+T to cycle Herdr tabs by recency; release to land. Arrow up for New Tab."
 platforms = ["linux", "macos"]
@@ -10,8 +10,15 @@ command = ["python3", "hook.py"]
 
 [[actions]]
 id = "open"
-title = "Hold T"
-description = "Open the tab switcher, or cycle to the next tab if it is already open"
+title = "Drover"
+description = "Open Drover, or cycle to the next tab if it is already open"
+contexts = ["global", "workspace"]
+command = ["python3", "-u", "open.py"]
+
+[[actions]]
+id = "cycle-prev"
+title = "Drover previous"
+description = "Cycle to the previous tab if Drover is already open"
 contexts = ["global", "workspace"]
 command = ["python3", "-u", "open.py"]
 
@@ -50,3 +57,21 @@ command = ["python3", "hook.py"]
 [[events]]
 on = "pane.agent_status_changed"
 command = ["python3", "hook.py"]
+
+# Overlay keys. Copy keybindings.example.toml to the plugin config dir to remap
+# without editing this file (GitHub installs replace the plugin root).
+[keybindings]
+select = ["Enter"]
+dismiss = ["Esc"]
+force_quit = ["C-c"]
+move_up = ["Up", "C-p"]
+move_down = ["Down", "C-n"]
+move_left = ["Left"]
+move_right = ["Right"]
+home = ["Home", "C-a"]
+end = ["End", "C-e"]
+backspace = ["Backspace"]
+cycle = ["C-t", "C-S-t"]
+cycle_prev = ["C-S-Tab"]
+next = ["Tab"]
+previous = ["S-Tab"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared Hold T helpers. Stdlib only."""
+"""Shared Drover helpers. Stdlib only."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any
 
-PLUGIN_ID = "followbl.hold-t"
+PLUGIN_ID = "followbl.drover"
 NEW_TAB_ID = "action:new-tab"
 
 
@@ -49,7 +49,19 @@ def lock_path() -> str:
 
 def sock_path() -> str:
     runtime = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
-    return os.path.join(runtime, "herdr-hold-t.sock")
+    return os.path.join(runtime, "herdr-drover.sock")
+
+
+def plugin_root() -> str:
+    return os.environ.get("HERDR_PLUGIN_ROOT") or os.path.dirname(os.path.abspath(__file__))
+
+
+def config_dir() -> str:
+    path = os.environ.get("HERDR_PLUGIN_CONFIG_DIR")
+    if path:
+        return path
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(xdg, "herdr", "plugins", "config", PLUGIN_ID)
 
 
 def now_ms() -> int:

@@ -1,0 +1,23 @@
+# Copy this file to the plugin config directory to remap overlay keys:
+#
+#   cp keybindings.example.toml "$(herdr plugin config-dir followbl.drover)/keybindings.toml"
+#
+# Syntax matches Herdr Recent Navigator: Enter, Esc, Up, C-p, C-S-t, S-Tab.
+# Each action is a list of keys. Later entries in this file replace the
+# shipped defaults for that action only.
+
+[keybindings]
+select = ["Enter"]
+dismiss = ["Esc"]
+force_quit = ["C-c"]
+move_up = ["Up", "C-p"]
+move_down = ["Down", "C-n"]
+move_left = ["Left"]
+move_right = ["Right"]
+home = ["Home", "C-a"]
+end = ["End", "C-e"]
+backspace = ["Backspace"]
+cycle = ["C-t", "C-S-t"]
+cycle_prev = ["C-S-Tab"]
+next = ["Tab"]
+previous = ["S-Tab"]

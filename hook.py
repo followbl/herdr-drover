@@ -109,5 +109,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as exc:  # noqa: BLE001 - hooks must never crash the server
-        sys.stderr.write(f"hold-t hook: {exc}\n")
+        sys.stderr.write(f"drover hook: {exc}\n")
         raise SystemExit(0)

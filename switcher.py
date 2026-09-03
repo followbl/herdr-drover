@@ -29,6 +29,7 @@ from lib import (
     relative_age,
     sock_path,
 )
+from keys import action_for_char, action_for_event, keymap
 
 ESC = "\x1b"
 CSI = ESC + "["
@@ -103,6 +104,7 @@ class Switcher:
         self.server: socket.socket | None = None
         self.old_term: list | None = None
         self.done: dict[str, Any] | None = None
+        self.keymap = keymap()
         self._place_initial_highlight()
 
     def filtered(self) -> list[dict[str, Any]]:
@@ -349,22 +351,22 @@ class Switcher:
     def handle_action(self, action: str) -> None:
         if action in {"", "noop", "pending"}:
             return
-        if action == "esc":
+        if action in {"dismiss", "force_quit", "esc"}:
             self.done = {"op": "cancel"}
             return
-        if action == "enter":
+        if action in {"select", "enter"}:
             self.confirm()
             return
-        if action == "up":
+        if action in {"move_up", "up"}:
             self.move(-1)
             return
-        if action == "down":
+        if action in {"move_down", "down"}:
             self.move(1)
             return
-        if action == "left":
+        if action in {"move_left", "left"}:
             self.move_cursor(-1)
             return
-        if action == "right":
+        if action in {"move_right", "right"}:
             self.move_cursor(1)
             return
         if action == "home":
@@ -381,16 +383,16 @@ class Switcher:
         if action == "backspace":
             self.delete_back()
             return
-        if action in {"ctrl+t", "ctrl+shift+t"}:
+        if action == "cycle":
             self.cycle(1)
             return
-        if action == "ctrl+shift+tab":
+        if action == "cycle_prev":
             self.cycle(-1)
             return
-        if action == "tab":
+        if action in {"next", "tab"}:
             self.move(1)
             return
-        if action == "shift+tab":
+        if action in {"previous", "shift+tab"}:
             self.move(-1)
 
     def handle_keys(self, data: str) -> None:
@@ -398,8 +400,8 @@ class Switcher:
         while self.pending:
             first = self.pending[0]
             if first == ESC:
-                action, used = parse_escape(self.pending)
-                if action == "pending":
+                event, used = parse_escape(self.pending)
+                if event == "pending":
                     if len(self.pending) > 64:
                         self.pending = self.pending[1:]
                         continue
@@ -408,26 +410,15 @@ class Switcher:
                     self.pending = self.pending[1:]
                     continue
                 self.pending = self.pending[used:]
-                self.handle_action(action)
+                action = action_for_event(event, self.keymap)
+                if action:
+                    self.handle_action(action)
                 continue
             ch = self.pending[0]
             self.pending = self.pending[1:]
-            if ch in ("\r", "\n"):
-                self.handle_action("enter")
-            elif ch == "\x03":
-                self.done = {"op": "cancel"}
-            elif ch in ("\x7f", "\x08"):
-                self.handle_action("backspace")
-            elif ch == "\x0e":
-                self.move(1)
-            elif ch == "\x10":
-                self.move(-1)
-            elif ch == "\x14":
-                self.cycle(1)
-            elif ch == "\x01":
-                self.handle_action("home")
-            elif ch == "\x05":
-                self.handle_action("end")
+            action = action_for_char(ch, self.keymap)
+            if action:
+                self.handle_action(action)
             elif ch.isprintable():
                 self.insert_text(ch)
 
@@ -695,5 +686,5 @@ if __name__ == "__main__":
             sys.stdout.flush()
         except OSError:
             pass
-        sys.stderr.write(f"hold-t: {exc}\n")
+        sys.stderr.write(f"drover: {exc}\n")
         raise SystemExit(1)
