@@ -1,0 +1,45 @@
+.github/workflows/test.yml
+  s_843a841ea5e514::t_f62cd67e6aa1f8 1-19
+.gitignore
+  s_843a841ea5e514::t_d2746171e5dd30 1-8
+LICENSE
+  s_843a841ea5e514::t_5657610c01d292 1-21
+README.md
+  s_843a841ea5e514::t_3fe79ebdba2c38 1-99
+tests/test_hold_t.py
+  s_843a841ea5e514::t_a44874abe2616e 1-250
+herdr-plugin.toml
+  s_78c930811fd3dc::t_23504e296a3ad7 1-52
+hook.py
+  s_78c930811fd3dc::t_6eb1f59afd1545 1-113
+lib.py
+  s_78c930811fd3dc::t_25c5d5a50c8756 1-407
+open.py
+  s_78c930811fd3dc::t_246bbda2aca58d 1-48
+switcher.py
+  s_78c930811fd3dc::t_96a59289e53a67 1-699
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "3b905aaf1b4f05c6987effcb79f5df2f9ea2e6de",
+  "prompts": {},
+  "sessions": {
+    "s_78c930811fd3dc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2dadf544-b5b1-47a7-aec4-386dc178b0e8",
+        "model": "unknown"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    },
+    "s_843a841ea5e514": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0637d-6108-76c0-b6df-17f3d3d75294",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    }
+  }
+}
