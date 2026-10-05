@@ -1,0 +1,35 @@
+tests/test_drover.py
+  s_a76138135fc0a7::t_6f47d101234247 941,945,948,958
+  s_a76138135fc0a7::t_ddf14a7c86679e 933-934,962,1133-1134
+  s_a76138135fc0a7::t_cfa4383b8058fa 942-944
+  s_a76138135fc0a7::t_2d06239d966c76 1016-1051,1125-1132,1135
+  s_a76138135fc0a7::t_2f2d9885aa834d 171,935-940,946-947,949-957,959-961,963
+  s_a76138135fc0a7::t_a4fdc6bcb0cc9c 1136
+titles.py
+  s_a76138135fc0a7::t_a06d5cd2c9ba8b 252-269,273-290,356-357
+  s_a76138135fc0a7::t_d28719068f4781 316-317,319,506-517,519-526,529-531
+  s_a76138135fc0a7::t_6f47d101234247 270-272
+  s_a76138135fc0a7::t_ddf14a7c86679e 311-315,349-355,358,361,365,367-368,459,467-468,491-492
+lib.py
+  s_a76138135fc0a7::t_2f2d9885aa834d 337-340
+CHANGELOG.md
+  s_a76138135fc0a7::t_3fd8c40465c146 16-24
+README.md
+  s_a76138135fc0a7::t_fa900626fecf26 139-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca976ec51b784eb3657d66f73954d60aacaf5dcf",
+  "prompts": {},
+  "sessions": {
+    "s_a76138135fc0a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bec9446b-53a5-410b-9244-3bae255278d1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    }
+  }
+}
