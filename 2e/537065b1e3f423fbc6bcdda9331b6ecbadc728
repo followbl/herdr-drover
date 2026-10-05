@@ -1,0 +1,34 @@
+titles.py
+  s_a76138135fc0a7::t_4b6b5814d6f4e6 419-436,446,452-455,459-460
+  s_a76138135fc0a7::t_d915e56e69d1ff 51-53,209-247,349-351
+  s_a76138135fc0a7::t_993fe575a7a6de 497-509,521-523,528,537-549,572-581,590,592-593,639-643,660
+systemd/drover-titles.timer
+  s_a76138135fc0a7::t_c81c0f3e95b213 1-13
+scripts/install-timer.sh
+  s_a76138135fc0a7::t_c81c0f3e95b213 1-24
+tests/test_drover.py
+  s_a76138135fc0a7::t_b484243339c9da 1016-1120
+systemd/drover-titles.service
+  s_a76138135fc0a7::t_c81c0f3e95b213 1-5,8-15
+  s_a76138135fc0a7::t_1b4c56cbcfff06 6-7
+CHANGELOG.md
+  s_a76138135fc0a7::t_cb18518b570e2c 23-27
+README.md
+  s_a76138135fc0a7::t_312a42364c9e97 155-172,174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e537065b1e3f423fbc6bcdda9331b6ecbadc728",
+  "prompts": {},
+  "sessions": {
+    "s_a76138135fc0a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bec9446b-53a5-410b-9244-3bae255278d1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    }
+  }
+}
