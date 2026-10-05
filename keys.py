@@ -20,6 +20,7 @@ DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
     "end": ["End", "C-e"],
     "backspace": ["Backspace"],
     "cycle": ["C-t", "C-S-t"],
+    "preview": ["C-o"],
     "cycle_prev": ["C-S-Tab"],
     "next": ["Tab"],
     "previous": ["S-Tab"],
@@ -44,6 +45,7 @@ EVENT_TO_TOKEN = {
 }
 
 CHAR_TO_TOKEN = {
+    "\x0f": "C-o",
     "\r": "Enter",
     "\n": "Enter",
     "\x03": "C-c",
@@ -200,3 +202,76 @@ def action_for_char(char: str, mapping: dict[str, str] | None = None) -> str:
     if not token:
         return ""
     return (mapping or keymap()).get(token, "")
+
+
+HERDR_CONFIG_ENV = "HERDR_CONFIG_PATH"
+DEFAULT_PREFIX = "ctrl+e"
+PLUGIN_ACTION_PREFIX = "followbl.drover"
+
+
+def _herdr_config_path() -> str:
+    path = os.environ.get(HERDR_CONFIG_ENV)
+    if path:
+        return path
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(xdg, "herdr", "config.toml")
+
+
+def _ctrl_char(key: str) -> str:
+    """'ctrl+e' -> '\\x05'. Empty string when the key is not a ctrl chord."""
+    pieces = [p.strip().lower() for p in re.split(r"[-+]", str(key or "")) if p.strip()]
+    if len(pieces) != 2 or pieces[0] not in {"c", "ctrl", "control"}:
+        return ""
+    tail = pieces[1]
+    if len(tail) != 1 or not tail.isalpha():
+        return ""
+    return chr(ord(tail.lower()) - 96)
+
+
+def herdr_chord(text: str | None = None) -> dict[str, str]:
+    """Map the terminal bytes of Herdr's own Drover chords to overlay actions.
+
+    Ghostty rewrites physical Super+T to the Herdr prefix chord (`\\x05t`). When
+    Herdr forwards those bytes to the focused popup instead of firing the plugin
+    action, the overlay has to recognize them itself or the second tap is typed
+    into the search field.
+    """
+    prefix = DEFAULT_PREFIX
+    commands: dict[str, str] = {}
+    if text is None:
+        try:
+            with open(_herdr_config_path(), encoding="utf-8") as handle:
+                text = handle.read()
+        except OSError:
+            text = ""
+    try:
+        import tomllib
+
+        data = tomllib.loads(text)
+    except (ImportError, ValueError):
+        data = {}
+    section = data.get("keys") if isinstance(data.get("keys"), dict) else {}
+    if isinstance(section.get("prefix"), str) and section["prefix"].strip():
+        prefix = section["prefix"].strip()
+    entries = section.get("command")
+    if isinstance(entries, dict):
+        entries = [entries]
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        command = str(entry.get("command") or "")
+        key = str(entry.get("key") or "")
+        if not command.startswith(f"{PLUGIN_ACTION_PREFIX}.") or not key:
+            continue
+        action = "cycle_prev" if command.endswith(("cycle-prev", "prev")) else "cycle"
+        low = key.strip().lower()
+        if not low.startswith("prefix+"):
+            continue
+        tail = low[len("prefix+") :]
+        if len(tail) == 1:
+            commands[tail] = action
+    lead = _ctrl_char(prefix)
+    if not lead or not commands:
+        return {}
+    return {lead + char: action for char, action in commands.items()}
+

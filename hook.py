@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from lib import drop_item, mutate_mru, now_ms, remember_live_state, snapshot, touch_item
+from lib import drop_item, mutate_mru, now_ms, prune_mru, remember_live_state, snapshot, touch_item
 
 
 def event_payload() -> tuple[str, dict]:
@@ -29,7 +29,12 @@ def event_payload() -> tuple[str, dict]:
 def main() -> int:
     kind = (os.environ.get("HERDR_PLUGIN_EVENT") or "").strip()
     if kind == "startup":
-        remember_live_state(snapshot())
+        # Server start is the one moment we know the whole session, so it is
+        # where the MRU file gets everything the session no longer has removed.
+        # Every later event then reads and rewrites a small file.
+        snap = snapshot()
+        mru = prune_mru(snap)
+        remember_live_state(snap, mru)
         return 0
 
     event, data = event_payload()

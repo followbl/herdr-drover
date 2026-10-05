@@ -1,8 +1,9 @@
 id = "followbl.drover"
 name = "Drover"
-version = "0.3.0"
-min_herdr_version = "0.7.5"
-description = "Hold Super+T to cycle Herdr tabs by recency; release to land. Arrow up for New Tab."
+version = "0.4.0"
+# Requires session.snapshot, pane.read and pane.focus over the server socket.
+min_herdr_version = "0.9.0"
+description = "Hold Super+T to cycle Herdr tabs by recency; release to land. Agent icons, status, and a live pane preview."
 platforms = ["linux", "macos"]
 
 [[startup]]
@@ -72,6 +73,7 @@ home = ["Home", "C-a"]
 end = ["End", "C-e"]
 backspace = ["Backspace"]
 cycle = ["C-t", "C-S-t"]
+preview = ["C-o"]
 cycle_prev = ["C-S-Tab"]
 next = ["Tab"]
 previous = ["S-Tab"]

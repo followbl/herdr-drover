@@ -18,6 +18,8 @@ home = ["Home", "C-a"]
 end = ["End", "C-e"]
 backspace = ["Backspace"]
 cycle = ["C-t", "C-S-t"]
+# Show or hide the pane preview column.
+preview = ["C-o"]
 cycle_prev = ["C-S-Tab"]
 next = ["Tab"]
 previous = ["S-Tab"]

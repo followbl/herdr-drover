@@ -6,8 +6,6 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import subprocess
-import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -15,10 +13,6 @@ from typing import Any
 
 PLUGIN_ID = "followbl.drover"
 NEW_TAB_ID = "action:new-tab"
-
-
-def herdr_bin() -> str:
-    return os.environ.get("HERDR_BIN_PATH") or "herdr"
 
 
 def state_dir() -> str:
@@ -45,6 +39,10 @@ def mru_path() -> str:
 
 def lock_path() -> str:
     return os.path.join(state_dir(), "mru.lock")
+
+
+def open_lock_path() -> str:
+    return os.path.join(state_dir(), "open.lock")
 
 
 def sock_path() -> str:
@@ -80,32 +78,11 @@ def _mru_lock():
         handle.close()
 
 
-def herdr(*args: str) -> dict[str, Any]:
-    result = subprocess.run(
-        [herdr_bin(), *args],
-        check=False,
-        capture_output=True,
-        stdin=subprocess.DEVNULL,
-    )
-    if result.returncode != 0:
-        err = ((result.stderr or result.stdout or b"").decode("utf-8", "ignore")).strip()
-        raise RuntimeError(err or f"herdr {' '.join(args)} failed ({result.returncode})")
-    raw = result.stdout or b""
-    if not raw.strip():
-        return {}
-    return json.loads(raw)
-
-
 def snapshot() -> dict[str, Any]:
-    payload = herdr("api", "snapshot")
-    return (payload.get("result") or {}).get("snapshot") or payload.get("snapshot") or {}
+    """The whole session in one round trip. See api.py for why not the CLI."""
+    import api
 
-
-def _result_list(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    result = payload.get("result")
-    source = result if isinstance(result, dict) else payload
-    value = source.get(key) if isinstance(source, dict) else None
-    return value if isinstance(value, list) else []
+    return api.client().snapshot()
 
 
 def _read_mru() -> dict[str, Any]:
@@ -303,67 +280,179 @@ def tab_sort_key(item: dict[str, Any]) -> tuple:
     )
 
 
-def build_items(mru: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """Cheap open path: tab list + workspace list + MRU. No snapshot, no disk write."""
-    bundle: dict[str, Any] = {}
+def lead_pane(panes: list[dict[str, Any]], focused_pane_id: str | None) -> dict[str, Any]:
+    """The pane a tab should be described by: the focused one, else an agent's."""
+    if not panes:
+        return {}
+    for pane in panes:
+        if pane.get("pane_id") and pane.get("pane_id") == focused_pane_id:
+            return pane
+    for pane in panes:
+        if pane.get("agent"):
+            return pane
+    return panes[0]
 
-    def load_tabs() -> None:
-        bundle["tabs"] = _result_list(herdr("tab", "list"), "tabs")
 
-    def load_spaces() -> None:
-        bundle["workspaces"] = _result_list(herdr("workspace", "list"), "workspaces")
+def number_of(tab: dict[str, Any]) -> int:
+    try:
+        return int(tab.get("number") or 0)
+    except (TypeError, ValueError):
+        return 0
 
-    def load_state() -> None:
-        bundle["mru"] = mru if mru is not None else load_mru()
 
-    workers = [threading.Thread(target=fn) for fn in (load_tabs, load_spaces, load_state)]
-    for worker in workers:
-        worker.start()
-    for worker in workers:
-        worker.join()
+def is_default_label(label: str) -> bool:
+    """True when Herdr is showing a position, not a name someone chose.
 
-    stored = (bundle.get("mru") or {}).get("items") or {}
+    An unnamed tab is labelled with its position, and positions shift as other
+    tabs close -- so the number on the tab need not be its current one. Any
+    all-digits label counts as unnamed; a tab deliberately named "7" is
+    indistinguishable from one Herdr numbered 7, and this is the reading that
+    helps more often.
+    """
+    text = (label or "").strip()
+    return not text or text.isdigit()
+
+
+def _squash(text: str) -> str:
+    """Comparable core of a title: ASCII letters and digits only.
+
+    Agents decorate their titles -- `π - Work`, `✳ Twilio` -- and the decoration
+    is not part of what the title says.
+    """
+    return "".join(char for char in text.lower() if char.isascii() and char.isalnum())
+
+
+def display_title(title: str, agent: str, cwd: str) -> str:
+    """A name for an unnamed tab: the agent's task title, else its directory.
+
+    Agents put several things in a terminal title. Codex appends ` | folder`.
+    Before a task has a title, several of them show only their own name, the
+    folder, or both -- `π - Work` -- and a row that says the agent twice says
+    nothing, so those fall back to the directory.
+    """
+    text = (title or "").strip()
+    if " | " in text:
+        text = text.split(" | ", 1)[0].strip()
+    base = _basename(cwd)
+    noise = {"", _squash(agent), _squash(base), _squash(agent) + _squash(base)}
+    if _squash(text) in noise:
+        return base
+    return text
+
+
+def _basename(path: str) -> str:
+    trimmed = (path or "").rstrip("/")
+    return trimmed.rsplit("/", 1)[-1] if trimmed else ""
+
+
+def build_items(mru: dict[str, Any] | None = None, snap: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """One snapshot plus the MRU file: no subprocesses, no second round trip.
+
+    Every row carries what the snapshot already knows about its tab -- agent
+    kind, status, working directory, the agent's own task title -- because the
+    fuzzy field matches on all of it and the row draws from it.
+    """
+    if snap is None:
+        snap = snapshot()
+    stored = ((mru if mru is not None else load_mru()).get("items")) or {}
+
     workspaces = {
         ws.get("workspace_id"): ws
-        for ws in (bundle.get("workspaces") or [])
+        for ws in (snap.get("workspaces") or [])
         if isinstance(ws, dict) and ws.get("workspace_id")
     }
+    panes_by_tab: dict[str, list[dict[str, Any]]] = {}
+    for pane in snap.get("panes") or []:
+        if isinstance(pane, dict) and pane.get("tab_id"):
+            panes_by_tab.setdefault(str(pane["tab_id"]), []).append(pane)
+
+    focused_tab = snap.get("focused_tab_id")
+    focused_pane = snap.get("focused_pane_id")
     now = now_ms()
     items: list[dict[str, Any]] = []
-    for tab in bundle.get("tabs") or []:
+    for tab in snap.get("tabs") or []:
         if not isinstance(tab, dict):
             continue
         tab_id = tab.get("tab_id")
         if not tab_id:
             continue
-        ws_id = tab.get("workspace_id")
-        ws = workspaces.get(ws_id) or {}
+        ws = workspaces.get(tab.get("workspace_id")) or {}
         hist = stored.get(tab_id) or {}
-        current = bool(tab.get("focused"))
+        panes = panes_by_tab.get(str(tab_id)) or []
+        pane = lead_pane(panes, focused_pane)
+        current = bool(tab.get("focused")) or tab_id == focused_tab
         last_focused = int(hist.get("last_focused_ms") or 0)
         if current:
             last_focused = max(last_focused, now)
-        label = str(tab.get("label") or tab_id)
-        space = str(ws.get("label") or ws_id or "")
+        agent_name = str(pane.get("agent") or "")
+        cwd_path = str(pane.get("foreground_cwd") or pane.get("cwd") or "")
+        title = str(pane.get("terminal_title_stripped") or "").strip()
+        label = str(tab.get("label") or "").strip()
+        number = number_of(tab)
+        if is_default_label(label):
+            # Display only: renaming tabs is another plugin's job.
+            label = display_title(title, agent_name, cwd_path) or label or f"tab {number}"
+        space = str(ws.get("label") or tab.get("workspace_id") or "")
+        agent = agent_name
+        cwd = cwd_path
         items.append(
             {
                 "id": tab_id,
                 "kind": "tab",
                 "label": label,
                 "space": space,
-                "workspace_id": ws_id,
+                "workspace_id": tab.get("workspace_id"),
+                "pane_id": pane.get("pane_id") or "",
+                "agent": agent,
+                "cwd": cwd,
+                "title": title,
                 "agent_status": str(tab.get("agent_status") or "unknown"),
-                "pane_count": int(tab.get("pane_count") or 0),
-                "number": int(tab.get("number") or 0),
+                "pane_count": int(tab.get("pane_count") or len(panes)),
+                "number": number,
                 "last_focused_ms": last_focused,
                 "last_prompt_ms": int(hist.get("last_prompt_ms") or 0),
-                "search": f"{label} {space}",
+                "search": " ".join(
+                    part for part in (label, title, space, agent, _basename(cwd), f"#{number}") if part
+                ),
                 "current": current,
             }
         )
 
     items.sort(key=tab_sort_key)
     return items
+
+
+def prune_mru(snap: dict[str, Any], mru: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Drop what the session no longer has.
+
+    The MRU file is written on every tab focus and every agent status change,
+    and read in full on every open. Left alone it keeps an entry per tab ever
+    seen -- 2787 of them against 47 live tabs here, half a megabyte of JSON
+    parsed and rewritten per event. Tabs the snapshot does not list are gone
+    for good, so they go.
+    """
+    live_tabs = {str(tab.get("tab_id")) for tab in (snap.get("tabs") or []) if isinstance(tab, dict)}
+    live_panes = {str(pane.get("pane_id")) for pane in (snap.get("panes") or []) if isinstance(pane, dict)}
+    if not live_tabs:
+        # An empty or failed snapshot is not evidence that the session is empty.
+        return mru if mru is not None else load_mru()
+
+    def apply(target: dict[str, Any]) -> bool | None:
+        items = target.setdefault("items", {})
+        panes = target.setdefault("panes", {})
+        dead_items = [key for key in items if key not in live_tabs]
+        dead_panes = [key for key, tab in panes.items() if key not in live_panes or str(tab) not in live_tabs]
+        for key in dead_items:
+            items.pop(key, None)
+        for key in dead_panes:
+            panes.pop(key, None)
+        return True if (dead_items or dead_panes) else False
+
+    if mru is not None:
+        if apply(mru):
+            save_mru(mru)
+        return mru
+    return mutate_mru(apply)
 
 
 def new_tab_item() -> dict[str, Any]:
@@ -417,3 +506,17 @@ def send_ipc(message: str) -> bool:
     finally:
         if sock is not None:
             sock.close()
+
+
+# --- temporary debug tracing (remove once the cycle bug is fixed) ---
+def dlog(*parts: Any) -> None:
+    """Append a line to the debug log when the flag file exists."""
+    try:
+        flag = os.path.join(state_dir(), "debug.on")
+        if not os.path.exists(flag):
+            return
+        line = " ".join(str(p) for p in parts)
+        with open(os.path.join(state_dir(), "debug.log"), "a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%H:%M:%S')}.{int(time.time()*1000)%1000:03d} pid={os.getpid()} {line}\n")
+    except OSError:
+        pass
