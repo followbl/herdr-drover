@@ -1,0 +1,28 @@
+tests/test_drover.py
+  s_a76138135fc0a7::t_dadf2c52a8b64d 815-839
+  s_a76138135fc0a7::t_58dd697e22351f 904-906,909-910,933
+CHANGELOG.md
+  s_a76138135fc0a7::t_485f7032ff6e51 9-10
+README.md
+  s_a76138135fc0a7::t_485f7032ff6e51 120,128-129,134,139-141
+switcher.py
+  s_a76138135fc0a7::t_dadf2c52a8b64d 28,30,109-125,308-328
+titles.py
+  s_a76138135fc0a7::t_6d6a197cca0192 10,46-47,234,276-277,313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "211e81d39cdf3b183a1145502d14b014b29be166",
+  "prompts": {},
+  "sessions": {
+    "s_a76138135fc0a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bec9446b-53a5-410b-9244-3bae255278d1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    }
+  }
+}
