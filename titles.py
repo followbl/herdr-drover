@@ -48,6 +48,9 @@ MAX_CHARS = 30
 PROMPT_CHARS = 600
 MODEL_TIMEOUT = 45.0
 PASS_LIMIT = 8
+REFRESH_LIMIT = 12
+# A session has to have moved on before its name is worth rewriting.
+REFRESH_BYTES = 4000
 RETRY_AFTER_MS = 60 * 60 * 1000
 WAIT_SECONDS = 90
 WAIT_STEP = 5.0
@@ -203,6 +206,45 @@ def first_prompt(path: str, limit: int = 400) -> str:
     return prompts[0] if prompts else ""
 
 
+def late_prompts(path: str, want: int = 2, tail_bytes: int = 200_000) -> list[str]:
+    """The most recent things a person asked for, oldest of those first.
+
+    What a long session is doing now is not what it was opened for, and the
+    name should follow the work. Only the tail of the file is read: these
+    transcripts reach megabytes.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as handle:
+            if size > tail_bytes:
+                handle.seek(size - tail_bytes)
+                handle.readline()  # drop the partial line
+            raw = handle.read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    found: list[str] = []
+    for line in reversed(raw.splitlines()):
+        if len(found) >= want:
+            break
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict) or entry.get("isMeta"):
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        text = " ".join(_text_of(message.get("content")).split())
+        if is_noise(text) or is_thin(text):
+            continue
+        found.append(text)
+    return list(reversed(found))
+
+
 def clean_prompt(text: str) -> str:
     collapsed = " ".join(text.split())
     return collapsed[:PROMPT_CHARS]
@@ -304,6 +346,9 @@ def compose_prompt(context: dict[str, Any]) -> str:
     requests = [clean_prompt(text) for text in (context.get("prompts") or []) if text]
     for index, text in enumerate(requests, start=1):
         parts.append(f"Request {index}: {text}")
+    recent = [clean_prompt(text) for text in (context.get("recent") or []) if text]
+    for text in recent:
+        parts.append(f"Working on now: {text}")
     joined = "\n".join(parts)
     return joined[: PROMPT_CHARS * 2]
 
@@ -371,8 +416,24 @@ def title_for(context: dict[str, Any], *, use_model: bool = True) -> tuple[str, 
 # -- the pass ------------------------------------------------------------------
 
 
-def candidates(snap: dict[str, Any]) -> list[dict[str, Any]]:
-    """Unnamed tabs whose agent keeps a transcript we can read."""
+def transcript_size(path: str) -> int:
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
+def moved_on(state: dict[str, Any], tab_id: str, label: str, path: str) -> bool:
+    """True when a name we wrote is stale: ours, and the session has grown."""
+    record = (state.get("tabs") or {}).get(tab_id)
+    if not record or record.get("title") != label:
+        return False  # not ours to rewrite
+    written = int(record.get("size") or 0)
+    return transcript_size(path) - written >= REFRESH_BYTES
+
+
+def candidates(snap: dict[str, Any], state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Tabs that want a name: never named, or named by us and since moved on."""
     panes: dict[str, list[dict[str, Any]]] = {}
     for pane in snap.get("panes") or []:
         if isinstance(pane, dict) and pane.get("tab_id"):
@@ -382,17 +443,21 @@ def candidates(snap: dict[str, Any]) -> list[dict[str, Any]]:
     for tab in snap.get("tabs") or []:
         if not isinstance(tab, dict) or not tab.get("tab_id"):
             continue
-        if not is_default_label(str(tab.get("label") or "")):
-            continue
+        label = str(tab.get("label") or "")
         pane = lead_pane(panes.get(str(tab["tab_id"])) or [], focused)
         session = pane.get("agent_session")
         path = transcript_path(session)
         if not path:
             continue
+        fresh = is_default_label(label)
+        stale = bool(state) and moved_on(state, str(tab["tab_id"]), label, path)
+        if not fresh and not stale:
+            continue
         found.append(
             {
                 "tab_id": str(tab["tab_id"]),
-                "label": str(tab.get("label") or ""),
+                "label": label,
+                "refresh": stale,
                 "agent": str(pane.get("agent") or ""),
                 "title": str(pane.get("terminal_title_stripped") or ""),
                 "cwd": str(pane.get("foreground_cwd") or pane.get("cwd") or ""),
@@ -429,8 +494,19 @@ def rename(client: Any, tab_id: str, title: str) -> bool:
         return False
 
 
-def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> list[tuple[str, str]]:
-    """Name what needs naming. Returns the (tab, title) pairs it wrote."""
+def run(
+    tab_id: str = "",
+    *,
+    dry_run: bool = False,
+    limit: int = PASS_LIMIT,
+    refresh: bool = False,
+) -> list[tuple[str, str]]:
+    """Name what needs naming. Returns the (tab, title) pairs it wrote.
+
+    With `refresh`, names this plugin wrote are also rewritten when their
+    session has moved on -- a scheduled sweep, so a tab opened for one thing
+    and spent on another says what it is doing now.
+    """
     if os.environ.get("DROVER_AI_TITLES", "").strip().lower() == "off" and not dry_run:
         return []
     client = api.client()
@@ -442,12 +518,14 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
 
     state = load_state()
     now = int(time.time() * 1000)
-    items = candidates(snap)
+    items = candidates(snap, state if refresh else None)
+    if refresh:
+        limit = max(limit, REFRESH_LIMIT)
     if tab_id:
         items = [item for item in items if item["tab_id"] == tab_id]
     written: list[tuple[str, str]] = []
     for item in items[:limit]:
-        if should_skip(state, item, now):
+        if not item.get("refresh") and should_skip(state, item, now):
             continue
         prompts = early_prompts(item["path"])
         if not prompts:
@@ -456,14 +534,19 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
                 "tried_ms": now,
             }
             continue
-        title, source = title_for(
-            {
-                "prompts": prompts,
-                "title": item.get("title", ""),
-                "cwd": item.get("cwd", ""),
-                "agent": item.get("agent", ""),
-            }
-        )
+        context = {
+            "prompts": prompts,
+            "title": item.get("title", ""),
+            "cwd": item.get("cwd", ""),
+            "agent": item.get("agent", ""),
+        }
+        if item.get("refresh"):
+            # A name being rewritten follows the work, so the model sees what
+            # the session is doing now, and the title it already carries is not
+            # a shortcut out of asking.
+            context["recent"] = late_prompts(item["path"])
+            context["title"] = ""
+        title, source = title_for(context)
         if source == "model":
             record(state, "model_calls")
         if not title:
@@ -486,6 +569,16 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
         current = str(fresh.get("label") or "")
         if not is_default_label(current) and not owned(state, item["tab_id"], current):
             continue
+        if current == title:
+            # Already says this; record the new size so it is not asked again
+            # until the session has moved on further.
+            state.setdefault("tabs", {})[item["tab_id"]] = {
+                "session": item["session"],
+                "title": title,
+                "at_ms": now,
+                "size": transcript_size(item["path"]),
+            }
+            continue
         if not rename(client, item["tab_id"], title):
             continue
         record(state, "named")
@@ -494,7 +587,10 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
             "session": item["session"],
             "title": title,
             "at_ms": now,
+            "size": transcript_size(item["path"]),
         }
+        if item.get("refresh"):
+            record(state, "refreshed")
         written.append((item["tab_id"], title))
     if not dry_run:
         live = {str(tab.get("tab_id")) for tab in snap.get("tabs") or []}
@@ -540,6 +636,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tab", default="", help="only this tab, waiting for its first prompt")
     parser.add_argument("--dry-run", action="store_true", help="print, change nothing")
     parser.add_argument("--limit", type=int, default=PASS_LIMIT)
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="also rewrite names this plugin wrote whose session has moved on",
+    )
     options = parser.parse_args(argv)
 
     # One pass at a time: every new agent fires this, and they would otherwise
@@ -556,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
         if options.tab:
             written = wait_for_tab(options.tab, dry_run=options.dry_run)
         else:
-            written = run(dry_run=options.dry_run, limit=options.limit)
+            written = run(dry_run=options.dry_run, limit=options.limit, refresh=options.refresh)
     finally:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

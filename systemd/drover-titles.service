@@ -1,0 +1,15 @@
+[Unit]
+Description=Drover: keep agent tab names up to date
+Documentation=https://github.com/followbl/herdr-drover
+
+[Service]
+# With no Herdr server running the pass finds nothing and exits 0, so there is
+# no condition here to get wrong.
+Type=oneshot
+# PLUGIN_ROOT is rewritten by scripts/install-timer.sh at install time.
+WorkingDirectory=PLUGIN_ROOT
+ExecStart=/usr/bin/env python3 PLUGIN_ROOT/titles.py --refresh
+# A sweep that cannot finish in five minutes is a sweep worth abandoning: the
+# next one is six hours away and starts from the same state.
+TimeoutStartSec=300
+Nice=10

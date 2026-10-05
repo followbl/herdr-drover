@@ -1013,6 +1013,111 @@ class TranscriptTests(unittest.TestCase):
             self.assertEqual(titles.transcript_path(None), "")
 
 
+class RefreshPassTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.env = mock.patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": self.tmp.name, "DROVER_AI_TITLES": ""})
+        self.env.start()
+        self.session = os.path.join(self.tmp.name, "session.jsonl")
+        self.write_session(["migrate us to telnyx"])
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def write_session(self, prompts: list, pad: int = 0) -> None:
+        with open(self.session, "w", encoding="utf-8") as handle:
+            for text in prompts:
+                handle.write(json.dumps({"type": "message", "message": {"role": "user", "content": text}}) + "\n")
+            if pad:
+                handle.write(json.dumps({"type": "note", "pad": "x" * pad}) + "\n")
+
+    def snap(self, label: str) -> dict:
+        return {
+            "focused_pane_id": "w0:p1",
+            "tabs": [{"tab_id": "w0:t1", "label": label, "number": 6}],
+            "panes": [{"pane_id": "w0:p1", "tab_id": "w0:t1", "agent": "pi", "cwd": "/w/x",
+                       "agent_session": {"kind": "path", "value": self.session}}],
+        }
+
+    def _client(self, label: str):
+        client = mock.Mock()
+        client.snapshot.return_value = self.snap(label)
+        return client
+
+    def test_a_name_we_wrote_is_rewritten_once_the_session_moves_on(self) -> None:
+        client = self._client("6")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        self.write_session(["migrate us to telnyx", "now rewrite the retry policy"], pad=titles.REFRESH_BYTES)
+        client = self._client("Telnyx Migration")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Retry Policy"
+        ):
+            written = titles.run(refresh=True)
+        self.assertEqual(written, [("w0:t1", "Retry Policy")])
+
+    def test_a_quiet_session_is_not_rewritten(self) -> None:
+        client = self._client("6")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        client = self._client("Telnyx Migration")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", side_effect=AssertionError("must not ask")
+        ):
+            self.assertEqual(titles.run(refresh=True), [])
+
+    def test_a_name_you_typed_is_never_rewritten(self) -> None:
+        client = self._client("6")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        self.write_session(["migrate us to telnyx", "now rewrite the retry policy"], pad=titles.REFRESH_BYTES)
+        client = self._client("brad's own name")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", side_effect=AssertionError("must not ask")
+        ):
+            self.assertEqual(titles.run(refresh=True), [])
+
+    def test_without_refresh_nothing_is_rewritten(self) -> None:
+        client = self._client("6")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        self.write_session(["migrate us to telnyx", "now rewrite the retry policy"], pad=titles.REFRESH_BYTES)
+        client = self._client("Telnyx Migration")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", side_effect=AssertionError("must not ask")
+        ):
+            self.assertEqual(titles.run(), [])
+
+    def test_the_same_name_again_costs_no_rename(self) -> None:
+        client = self._client("6")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        self.write_session(["migrate us to telnyx", "more of the same"], pad=titles.REFRESH_BYTES)
+        client = self._client("Telnyx Migration")
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            self.assertEqual(titles.run(refresh=True), [])
+        self.assertEqual(client.call.call_count, 0)
+
+    def test_recent_prompts_reach_the_model(self) -> None:
+        self.write_session(["open the thing", "/effort max", "rewrite the retry policy for job reads"])
+        self.assertEqual(titles.late_prompts(self.session, want=1), ["rewrite the retry policy for job reads"])
+        shown = titles.compose_prompt({"prompts": ["open the thing"], "recent": ["rewrite the retry policy"]})
+        self.assertIn("Working on now: rewrite the retry policy", shown)
+
+
 class WaitForTabTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()

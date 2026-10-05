@@ -20,6 +20,11 @@
 - Agent detection fires for every agent, including all of them at once when the
   server restarts, so that pass now checks the tab list (6KB) rather than a
   snapshot (114KB) and exits in ~40ms unless the tab is really unnamed.
+- Rewrite names this plugin wrote when their session has moved on, from the
+  most recent requests rather than the first, on a systemd user timer that
+  sweeps four times a day (`scripts/install-timer.sh`). Names you typed are
+  never rewritten, a session is reconsidered only after its transcript grows
+  4KB, and a sweep asks at most 12 times.
 - Count what naming does -- model calls, names written, and where each name
   came from -- in the state file.
 

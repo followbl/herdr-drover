@@ -152,8 +152,26 @@ call -- though measured against a real session, that shortcut covered only 1
 agent tab in 16: most agent titles run to four or five meaningful words, which
 is past the limit, so the model still writes most names.
 
+### Keeping them current
+
+A tab opened for one thing is often spent on another. A scheduled sweep rewrites
+the names **this plugin wrote** -- never the ones you typed -- when their session
+has moved on, reading the most recent requests rather than the first:
+
+```bash
+scripts/install-timer.sh             # four sweeps a day, via systemd --user
+scripts/install-timer.sh --remove    # stop and remove it
+python3 titles.py --refresh --dry-run
+```
+
+The timer fires at 02:17, 08:17, 14:17 and 20:17 with `Persistent=true`, so a
+machine that was asleep still gets its sweep. A session is only reconsidered
+once its transcript has grown by 4KB since it was named, and a sweep asks at
+most 12 times, so the ceiling is 48 calls a day and the floor -- a quiet
+machine, or tabs you named yourself -- is none.
+
 The tally lives in `titles.json` in the plugin's state directory
-(`model_calls`, `named`, `named_by_model`, `named_by_own_title`,
+(`model_calls`, `named`, `refreshed`, `named_by_model`, `named_by_own_title`,
 `named_by_heuristic`), so the question has an answer rather than an estimate. The rules it will not break:
 
 - A tab **you** named is never touched, nor is one named by another plugin.

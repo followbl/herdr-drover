@@ -1,0 +1,13 @@
+[Unit]
+Description=Drover: name and refresh agent tabs four times a day
+
+[Timer]
+# Four sweeps a day, away from the top of the hour so it does not land with
+# everything else on the machine.
+OnCalendar=*-*-* 02,08,14,20:17:00
+# A laptop that was asleep at 02:17 still gets its sweep.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
