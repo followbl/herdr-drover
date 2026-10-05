@@ -117,6 +117,53 @@ Release-to-land uses `keyd listen` and a layer named `cmd`. If keyd is missing, 
 
 On macOS there is no keyd path. Use arrows / search / Enter.
 
+## Two-word tab names
+
+Herdr labels a tab you never named with its position, so a row reads `6`. The
+agent's own title is not always better: Claude writes a real task title, but pi
+writes `π - metaintro`, which says only that pi is running somewhere you already
+know about.
+
+Both keep a transcript on this machine, and its first human message says what
+the session is for. Drover reads that, has a small model condense it to **two
+words**, and names the tab:
+
+| Session's first request | Name |
+|---|---|
+| can you please read f-twilio and come up with a full plan to move us over to telnyx | `Telnyx Migration` |
+| go through all core repos and audit the API layer | `API Audit` |
+| Read .audit/…/prompts/03.md completely and execute | `Error Contracts` |
+| look at the Cloudflare blog for everything they shipped last week | `Competitive Intelligence` |
+
+It runs on Herdr's startup and whenever a new agent is detected, in the
+background, one model call per session. The rules it will not break:
+
+- A tab **you** named is never touched, nor is one named by another plugin.
+- A name Drover wrote is replaced only by Drover, and only while it is still
+  the name on the tab. Rename it yourself and it stops.
+- No transcript, no model, no name: the tab keeps its number.
+
+```bash
+herdr plugin action invoke followbl.drover.title-tabs   # name them now
+python3 titles.py --dry-run                             # see what it would name
+```
+
+| | |
+|---|---|
+| `DROVER_AI_TITLES=off` | no model, no renames |
+| `DROVER_TITLE_CMD` | the model command; default `claude -p --model haiku` |
+
+Without a model command on PATH it falls back to two salient words from the
+request itself, so the tab still beats a number.
+
+### Showing them in Radar
+
+[herdr-radar](https://github.com/hhdebb/herdr-radar) names an agent row after
+the session title by default, which is where `π - metaintro` comes from. Set
+`row_label = "tab"` in its config (`prefix+,`) and rows read the tab's name
+instead, falling back to the session title only for tabs nobody has named --
+which is exactly the set Drover names.
+
 ## Agent marks
 
 Vendor logos come from the **Herdr Agent Icons Max** font published by

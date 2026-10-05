@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 
-from lib import drop_item, mutate_mru, now_ms, prune_mru, remember_live_state, snapshot, touch_item
+from lib import drop_item, mutate_mru, now_ms, plugin_root, prune_mru, remember_live_state, snapshot, touch_item
 
 
 def event_payload() -> tuple[str, dict]:
@@ -26,6 +27,24 @@ def event_payload() -> tuple[str, dict]:
     return kind.replace("-", "_").replace(".", "_"), data
 
 
+def start_titler(args: list[str]) -> None:
+    """Hand naming to a detached pass: it waits on a transcript and a model,
+    and an event hook has to return now."""
+    if (os.environ.get("DROVER_AI_TITLES") or "").strip().lower() == "off":
+        return
+    try:
+        subprocess.Popen(
+            [sys.executable, os.path.join(plugin_root(), "titles.py"), *args],
+            cwd=plugin_root(),
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
+
+
 def main() -> int:
     kind = (os.environ.get("HERDR_PLUGIN_EVENT") or "").strip()
     if kind == "startup":
@@ -35,6 +54,7 @@ def main() -> int:
         snap = snapshot()
         mru = prune_mru(snap)
         remember_live_state(snap, mru)
+        start_titler([])
         return 0
 
     event, data = event_payload()
@@ -71,6 +91,10 @@ def main() -> int:
         mutate_mru(
             lambda mru: touch_item(mru, tab_id, kind="tab", extra={"label": data.get("label"), "workspace_id": workspace_id})
         )
+        return 0
+    if event in {"pane_agent_detected"}:
+        if tab_id:
+            start_titler(["--tab", tab_id])
         return 0
     if event in {"pane_created", "pane_moved"}:
         mapped = pane.get("tab_id") or tab_id

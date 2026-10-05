@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### 0.5.0
+
+- Name unnamed agent tabs from what the session was asked to do: Drover reads
+  the agent's local transcript, has a small model condense the first human
+  request to two words, and renames the tab. Runs on startup and on agent
+  detection, one call per session, in the background. Tabs you named are never
+  touched, and a name Drover wrote is replaced only while it is still the name
+  on the tab. `DROVER_AI_TITLES=off` turns it off, `DROVER_TITLE_CMD` replaces
+  the model command, and without one it falls back to two words taken from the
+  request.
+- New action `followbl.drover.title-tabs` names them on demand.
+
 ### 0.4.0
 
 Fixes for cycling, and a faster, denser overlay. Ideas taken from reading

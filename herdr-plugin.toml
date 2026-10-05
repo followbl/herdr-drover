@@ -1,9 +1,9 @@
 id = "followbl.drover"
 name = "Drover"
-version = "0.4.0"
+version = "0.5.0"
 # Requires session.snapshot, pane.read and pane.focus over the server socket.
 min_herdr_version = "0.9.0"
-description = "Hold Super+T to cycle Herdr tabs by recency; release to land. Agent icons, status, and a live pane preview."
+description = "Hold Super+T to cycle Herdr tabs by recency; release to land. Two-word names for unnamed agent tabs, agent icons, status, and a live pane preview."
 platforms = ["linux", "macos"]
 
 [[startup]]
@@ -22,6 +22,13 @@ title = "Drover previous"
 description = "Cycle to the previous tab if Drover is already open"
 contexts = ["global", "workspace"]
 command = ["python3", "-u", "open.py"]
+
+[[actions]]
+id = "title-tabs"
+title = "Name unnamed agent tabs"
+description = "Give every unnamed agent tab a two-word name from what its session was asked to do"
+contexts = ["global"]
+command = ["python3", "titles.py"]
 
 [[panes]]
 id = "switcher"
@@ -57,6 +64,11 @@ command = ["python3", "hook.py"]
 
 [[events]]
 on = "pane.agent_status_changed"
+command = ["python3", "hook.py"]
+
+# A new agent session is a tab that may need a name.
+[[events]]
+on = "pane.agent_detected"
 command = ["python3", "hook.py"]
 
 # Overlay keys. Copy keybindings.example.toml to the plugin config dir to remap

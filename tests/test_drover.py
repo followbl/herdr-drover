@@ -21,6 +21,7 @@ import api  # noqa: E402
 import hook  # noqa: E402
 import icons  # noqa: E402
 import paint  # noqa: E402
+import titles  # noqa: E402
 import text as textutil  # noqa: E402
 import keys  # noqa: E402
 import lib  # noqa: E402
@@ -857,6 +858,200 @@ class RefreshTests(unittest.TestCase):
         with mock.patch.object(switcher.api, "client", return_value=client):
             sw.refresh()
         self.assertEqual(sw.all_items, before)
+
+
+class TitleTextTests(unittest.TestCase):
+    def test_tidy_accepts_a_name(self) -> None:
+        self.assertEqual(titles.tidy("Telnyx Migration"), "Telnyx Migration")
+        self.assertEqual(titles.tidy('  "API Audit"  '), "API Audit")
+        self.assertEqual(titles.tidy("Error Contracts."), "Error Contracts")
+
+    def test_tidy_rejects_an_answer_that_is_not_a_name(self) -> None:
+        for answer in (
+            "",
+            "Here is a good title for your session",
+            "Sure! API Audit",
+            "I think this session is about the API",
+            "Supercalifragilistic Expialidocious Naming",
+        ):
+            self.assertEqual(titles.tidy(answer), "", answer)
+
+    def test_tidy_keeps_at_most_two_words(self) -> None:
+        self.assertEqual(titles.tidy("Telnyx Migration Plan"), "Telnyx Migration")
+
+    def test_heuristic_names_without_a_model(self) -> None:
+        self.assertEqual(titles.two_words("can you please migrate us from twilio to telnyx"), "Migrate Twilio")
+        self.assertEqual(titles.two_words("the and or if"), "")
+
+    def test_thin_requests_are_recognized(self) -> None:
+        self.assertTrue(titles.is_thin("/effort ultracode"))
+        self.assertTrue(titles.is_thin("go on"))
+        self.assertFalse(titles.is_thin("audit the API layer for url encoding"))
+
+    def test_noise_is_not_a_request(self) -> None:
+        self.assertTrue(titles.is_noise("<local-command-caveat>Caveat: the messages below"))
+        self.assertTrue(titles.is_noise("<command-name>/clear</command-name>"))
+        self.assertFalse(titles.is_noise("fix the retry policy"))
+
+    def test_model_prompt_carries_title_directory_and_requests(self) -> None:
+        shown = titles.compose_prompt(
+            {"title": "π - metaintro", "cwd": "/home/b/Work/metaintro", "prompts": ["audit the api layer"]}
+        )
+        self.assertIn("Session title: π - metaintro", shown)
+        self.assertIn("Working directory: metaintro", shown)
+        self.assertIn("Request 1: audit the api layer", shown)
+
+    def test_falls_back_to_the_heuristic_when_the_model_declines(self) -> None:
+        with mock.patch.object(titles, "ask_model", return_value=""):
+            name = titles.title_for({"prompts": ["migrate us from twilio to telnyx"], "title": "", "cwd": ""})
+        self.assertEqual(name, "Migrate Twilio")
+
+
+class TranscriptTests(unittest.TestCase):
+    def _write(self, directory: str, lines: list) -> str:
+        path = os.path.join(directory, "session.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            for line in lines:
+                handle.write(json.dumps(line) + "\n")
+        return path
+
+    def test_reads_pi_and_claude_shapes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, [
+                {"type": "session", "id": "x"},
+                {"type": "message", "message": {"role": "system", "content": "you are"}},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "audit the api layer"}]}},
+            ])
+            self.assertEqual(titles.first_prompt(path), "audit the api layer")
+            claude = self._write(tmp, [
+                {"type": "user", "isMeta": True, "message": {"role": "user", "content": "<system-reminder>x"}},
+                {"type": "user", "message": {"role": "user", "content": "<local-command-caveat>Caveat: the messages below"}},
+                {"type": "user", "message": {"role": "user", "content": "plan the telnyx move"}},
+            ])
+            self.assertEqual(titles.first_prompt(claude), "plan the telnyx move")
+
+    def test_thin_requests_come_after_substantial_ones(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, [
+                {"type": "message", "message": {"role": "user", "content": "/effort ultracode"}},
+                {"type": "message", "message": {"role": "user", "content": "rewrite the retry policy for job reads"}},
+            ])
+            self.assertEqual(
+                titles.early_prompts(path),
+                ["rewrite the retry policy for job reads", "/effort ultracode"],
+            )
+
+    def test_transcript_path_for_each_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session = os.path.join(tmp, "s.jsonl")
+            open(session, "w").close()
+            self.assertEqual(titles.transcript_path({"kind": "path", "value": session}), session)
+            self.assertEqual(titles.transcript_path({"kind": "path", "value": "/nope.jsonl"}), "")
+            projects = os.path.join(tmp, "projects", "-home-b-Work")
+            os.makedirs(projects)
+            claude = os.path.join(projects, "abc-123.jsonl")
+            open(claude, "w").close()
+            with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": tmp}):
+                self.assertEqual(titles.transcript_path({"kind": "id", "value": "abc-123"}), claude)
+                self.assertEqual(titles.transcript_path({"kind": "id", "value": "missing"}), "")
+            self.assertEqual(titles.transcript_path(None), "")
+
+
+class TitlePassTests(unittest.TestCase):
+    SNAP = {
+        "focused_pane_id": "w0:p1",
+        "tabs": [
+            {"tab_id": "w0:t1", "label": "6", "number": 6},
+            {"tab_id": "w0:t2", "label": "core-sms", "number": 7},
+            {"tab_id": "w0:t3", "label": "8", "number": 8},
+        ],
+        "panes": [
+            {"pane_id": "w0:p1", "tab_id": "w0:t1", "agent": "pi", "cwd": "/w/metaintro",
+             "agent_session": {"kind": "path", "value": "SESSION"}},
+            {"pane_id": "w0:p2", "tab_id": "w0:t2", "agent": "claude", "cwd": "/w/x",
+             "agent_session": {"kind": "path", "value": "SESSION"}},
+            {"pane_id": "w0:p3", "tab_id": "w0:t3", "agent": "", "cwd": "/w/y"},
+        ],
+    }
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.env = mock.patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": self.tmp.name, "DROVER_AI_TITLES": ""})
+        self.env.start()
+        self.session = os.path.join(self.tmp.name, "session.jsonl")
+        with open(self.session, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"type": "message", "message": {"role": "user", "content": "migrate us to telnyx"}}) + "\n")
+        self.snap = json.loads(json.dumps(self.SNAP).replace("SESSION", self.session))
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def _client(self, snap=None):
+        client = mock.Mock()
+        client.snapshot.return_value = snap or self.snap
+        return client
+
+    def test_only_unnamed_tabs_with_a_transcript_are_candidates(self) -> None:
+        found = titles.candidates(self.snap)
+        self.assertEqual([item["tab_id"] for item in found], ["w0:t1"])
+
+    def test_a_pass_names_the_unnamed_tab(self) -> None:
+        client = self._client()
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            written = titles.run()
+        self.assertEqual(written, [("w0:t1", "Telnyx Migration")])
+        client.call.assert_called_once()
+        self.assertEqual(client.call.call_args[0][0], "tab.rename")
+        self.assertEqual(client.call.call_args[0][1]["label"], "Telnyx Migration")
+
+    def test_a_name_typed_while_the_model_thought_wins(self) -> None:
+        client = self._client()
+        renamed = json.loads(json.dumps(self.snap))
+        renamed["tabs"][0]["label"] = "brad's name"
+        client.snapshot.side_effect = [self.snap, renamed]
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            self.assertEqual(titles.run(), [])
+        client.call.assert_not_called()
+
+    def test_the_same_session_is_not_named_twice(self) -> None:
+        client = self._client()
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ) as ask:
+            titles.run()
+            named = json.loads(json.dumps(self.snap))
+            named["tabs"][0]["label"] = "Telnyx Migration"
+            client.snapshot.return_value = named
+            titles.run()
+        ask.assert_called_once()
+
+    def test_dry_run_changes_nothing(self) -> None:
+        client = self._client()
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            written = titles.run(dry_run=True)
+        self.assertEqual(written, [("w0:t1", "Telnyx Migration")])
+        client.call.assert_not_called()
+        self.assertFalse(os.path.exists(titles.titles_path()))
+
+    def test_off_switch(self) -> None:
+        with mock.patch.dict(os.environ, {"DROVER_AI_TITLES": "off"}):
+            self.assertEqual(titles.run(), [])
+
+    def test_state_forgets_closed_tabs(self) -> None:
+        titles.save_state({"tabs": {"w0:t9": {"session": "x", "title": "Old Name"}}})
+        client = self._client()
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        self.assertNotIn("w0:t9", titles.load_state()["tabs"])
 
 
 if __name__ == "__main__":
