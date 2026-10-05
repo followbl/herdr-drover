@@ -249,6 +249,45 @@ def short_name(prompt: str) -> str:
     return name[:MAX_CHARS]
 
 
+def shorten(title: str) -> str:
+    """Cut a title to the word limit without asking anyone.
+
+    Claude already writes a real task title -- `Twilio to Telnyx migration` --
+    so the only thing missing is length. Dropping the words that carry no
+    meaning usually gets there, and when it does not, the model still can.
+    """
+    words = [word for word in title.split() if word]
+    if not words:
+        return ""
+    if len(words) <= MAX_WORDS:
+        return title if len(title) <= MAX_CHARS else ""
+    kept = [word for word in words if word.lower() not in STOPWORDS]
+    if not kept or len(kept) > MAX_WORDS:
+        return ""
+    name = " ".join(kept)
+    if len(name) > MAX_CHARS:
+        return ""
+    # Casing is left exactly as the agent wrote it: `iCIMS` and `JobDiva` lose
+    # their shape to any rule simple enough to apply here.
+    return name
+
+
+def own_title(context: dict[str, Any]) -> str:
+    """The agent's own title, when it says something and fits."""
+    title = " ".join(str(context.get("title") or "").split())
+    if " | " in title:
+        title = title.split(" | ", 1)[0].strip()
+    if not title:
+        return ""
+    import lib
+
+    # The same reading build_items uses for a row: a title that is only the
+    # agent's name or its folder is not a title.
+    if lib.display_title(title, str(context.get("agent") or ""), str(context.get("cwd") or "")) != title:
+        return ""
+    return shorten(title)
+
+
 def model_command() -> list[str]:
     return shlex.split(os.environ.get("DROVER_TITLE_CMD") or DEFAULT_COMMAND)
 
@@ -269,8 +308,15 @@ def compose_prompt(context: dict[str, Any]) -> str:
     return joined[: PROMPT_CHARS * 2]
 
 
+def record(state: dict[str, Any], event: str) -> None:
+    """Keep a tally in the state file; how often this runs should be a fact."""
+    stats = state.setdefault("stats", {})
+    stats[event] = int(stats.get(event) or 0) + 1
+    stats[f"last_{event}_ms"] = int(time.time() * 1000)
+
+
 def ask_model(prompt: str) -> str:
-    """Two words from a small model, or an empty string if it will not."""
+    """A short name from a small model, or an empty string if it will not."""
     instruction = (
         "Name this coding session so its owner recognizes it in a tab list.\n"
         f"Rules: at most {MAX_WORDS} words, fewer when two say it, Title Case, "
@@ -300,17 +346,26 @@ def ask_model(prompt: str) -> str:
     return tidy((result.stdout or b"").decode("utf-8", "replace"))
 
 
-def title_for(context: dict[str, Any], *, use_model: bool = True) -> str:
-    """A name for this session: the model's two words, or ours."""
+def title_for(context: dict[str, Any], *, use_model: bool = True) -> tuple[str, str]:
+    """A name for this session, and where it came from.
+
+    The source matters: a name the agent already wrote costs nothing, and the
+    tally of how often a model was needed is the only honest answer to "how
+    often does this run".
+    """
+    ready = own_title(context)
+    if ready:
+        return ready, "own_title"
     shown = compose_prompt(context)
     if not shown:
-        return ""
+        return "", "none"
     if use_model and os.environ.get("DROVER_AI_TITLES", "").strip().lower() != "off":
         name = ask_model(shown)
         if name:
-            return name
+            return name, "model"
     fallback = " ".join(context.get("prompts") or []) or str(context.get("title") or "")
-    return short_name(clean_prompt(fallback))
+    name = short_name(clean_prompt(fallback))
+    return (name, "heuristic") if name else ("", "none")
 
 
 # -- the pass ------------------------------------------------------------------
@@ -401,7 +456,7 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
                 "tried_ms": now,
             }
             continue
-        title = title_for(
+        title, source = title_for(
             {
                 "prompts": prompts,
                 "title": item.get("title", ""),
@@ -409,6 +464,8 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
                 "agent": item.get("agent", ""),
             }
         )
+        if source == "model":
+            record(state, "model_calls")
         if not title:
             state.setdefault("tabs", {})[item["tab_id"]] = {
                 "session": item["session"],
@@ -431,6 +488,8 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
             continue
         if not rename(client, item["tab_id"], title):
             continue
+        record(state, "named")
+        record(state, f"named_by_{source}")
         state.setdefault("tabs", {})[item["tab_id"]] = {
             "session": item["session"],
             "title": title,
@@ -444,10 +503,32 @@ def run(tab_id: str = "", *, dry_run: bool = False, limit: int = PASS_LIMIT) -> 
     return written
 
 
+def tab_label(client: Any, tab_id: str) -> str | None:
+    """This tab's current label, or None if it is gone."""
+    try:
+        result = client.call("tab.list", {}, ["tab", "list"])
+    except api.ApiError:
+        return None
+    for tab in result.get("tabs") or []:
+        if isinstance(tab, dict) and tab.get("tab_id") == tab_id:
+            return str(tab.get("label") or "")
+    return None
+
+
 def wait_for_tab(tab_id: str, dry_run: bool = False) -> list[tuple[str, str]]:
-    """A session has just started; give it time to be asked for something."""
+    """A session has just started; give it time to be asked for something.
+
+    Detection fires for every agent, including all of them at once when the
+    server restarts, so this leaves immediately unless the tab really is
+    waiting for a name -- and asks for the tab list, not a whole snapshot,
+    while it waits.
+    """
+    client = api.client()
     deadline = time.monotonic() + WAIT_SECONDS
     while True:
+        label = tab_label(client, tab_id)
+        if label is None or not is_default_label(label):
+            return []  # named, or closed: nothing here to do
         written = run(tab_id, dry_run=dry_run)
         if written or time.monotonic() >= deadline:
             return written

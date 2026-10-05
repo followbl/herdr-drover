@@ -136,9 +136,25 @@ words or fewer**, and names the tab:
 | Read .audit/…/prompts/03.md completely and execute | `Error Contracts` |
 | look at the Cloudflare blog for everything they shipped last week | `Competitive Intelligence` |
 
-It runs on Herdr's startup, whenever a new agent is detected, and when the
-overlay opens on a tab that is still a number -- in the background, one model
-call per session. The rules it will not break:
+### When it runs, and how often it asks a model
+
+On Herdr's startup, whenever a new agent is detected, and when the overlay
+opens on a tab that is still a number. Each of those is a detached pass that
+reads the tab list first and exits in ~40ms unless a tab really is waiting for
+a name, so the frequent trigger is cheap and the expensive one is rare.
+
+A model is asked at most **once per session**, and only for a tab that has no
+name of its own. A session whose transcript has nothing to read yet is retried
+after an hour, not sooner. Name all your tabs and this never calls anything.
+
+A tab whose agent already wrote a short, real title keeps it without a model
+call -- though measured against a real session, that shortcut covered only 1
+agent tab in 16: most agent titles run to four or five meaningful words, which
+is past the limit, so the model still writes most names.
+
+The tally lives in `titles.json` in the plugin's state directory
+(`model_calls`, `named`, `named_by_model`, `named_by_own_title`,
+`named_by_heuristic`), so the question has an answer rather than an estimate. The rules it will not break:
 
 - A tab **you** named is never touched, nor is one named by another plugin.
 - A name Drover wrote is replaced only by Drover, and only while it is still

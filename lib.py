@@ -334,7 +334,10 @@ def display_title(title: str, agent: str, cwd: str) -> str:
     if " | " in text:
         text = text.split(" | ", 1)[0].strip()
     base = _basename(cwd)
-    noise = {"", _squash(agent), _squash(base), _squash(agent) + _squash(base)}
+    agent_key = _squash(agent)
+    # An agent naming itself says nothing: "Claude Code", "pi", "π - Work".
+    noise = {"", agent_key, _squash(base), agent_key + _squash(base)}
+    noise.update(agent_key + suffix for suffix in ("code", "cli", "agent", "chat", "coder"))
     if _squash(text) in noise:
         return base
     return text

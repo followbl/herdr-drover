@@ -13,6 +13,15 @@
   the model command, and without one it falls back to two words taken from the
   request.
 - New action `followbl.drover.title-tabs` names them on demand.
+- Keep a short title the agent wrote rather than asking a model to rewrite it,
+  dropping only the words that carry no meaning (`Twilio to Telnyx migration`
+  -> `Twilio Telnyx migration`). An agent that names only itself -- `Claude
+  Code`, `π - metaintro` -- is not a title and still goes to the model.
+- Agent detection fires for every agent, including all of them at once when the
+  server restarts, so that pass now checks the tab list (6KB) rather than a
+  snapshot (114KB) and exits in ~40ms unless the tab is really unnamed.
+- Count what naming does -- model calls, names written, and where each name
+  came from -- in the state file.
 
 ### 0.4.0
 

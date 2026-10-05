@@ -168,6 +168,7 @@ class DisplayTitleTests(unittest.TestCase):
 
     def test_agent_and_folder_noise_falls_back_to_the_directory(self) -> None:
         self.assertEqual(lib.display_title("\u03c0 - Work", "pi", "/home/b/Work"), "Work")
+        self.assertEqual(lib.display_title("Claude Code", "claude", "/home/b/Work/herdr"), "herdr")
         self.assertEqual(lib.display_title("claude", "claude", "/home/b/Work/herdr"), "herdr")
         self.assertEqual(lib.display_title("", "", "/home/b/Work/tsk/ae1275"), "ae1275")
 
@@ -929,8 +930,37 @@ class TitleTextTests(unittest.TestCase):
 
     def test_falls_back_to_the_heuristic_when_the_model_declines(self) -> None:
         with mock.patch.object(titles, "ask_model", return_value=""):
-            name = titles.title_for({"prompts": ["migrate us from twilio to telnyx"], "title": "", "cwd": ""})
-        self.assertEqual(name, "Migrate Twilio Telnyx")
+            name, source = titles.title_for({"prompts": ["migrate us from twilio to telnyx"], "title": "", "cwd": ""})
+        self.assertEqual((name, source), ("Migrate Twilio Telnyx", "heuristic"))
+
+
+class OwnTitleTests(unittest.TestCase):
+    def _ctx(self, title: str, agent: str = "claude", cwd: str = "/w/metaintro") -> dict:
+        return {"title": title, "agent": agent, "cwd": cwd, "prompts": ["do the thing"]}
+
+    def test_casing_is_the_agent_s_own(self) -> None:
+        self.assertEqual(titles.own_title(self._ctx("iCIMS provider check")), "iCIMS provider check")
+        # Four words that all carry meaning are the model's problem, not ours.
+        self.assertEqual(titles.own_title(self._ctx("iCIMS root provider check")), "")
+
+    def test_a_real_title_short_enough_needs_no_model(self) -> None:
+        self.assertEqual(titles.own_title(self._ctx("Telnyx Migration")), "Telnyx Migration")
+        self.assertEqual(titles.own_title(self._ctx("Twilio to Telnyx migration")), "Twilio Telnyx migration")
+
+    def test_a_long_title_goes_to_the_model(self) -> None:
+        self.assertEqual(titles.own_title(self._ctx("Workday ATS provider data quality issues")), "")
+
+    def test_an_agent_naming_itself_is_not_a_title(self) -> None:
+        self.assertEqual(titles.own_title(self._ctx("Claude Code")), "")
+        self.assertEqual(titles.own_title(self._ctx("\u03c0 - metaintro", "pi", "/home/b/Work/metaintro")), "")
+
+    def test_codex_folder_suffix_is_dropped_first(self) -> None:
+        self.assertEqual(titles.own_title(self._ctx("Twilio migration | metaintro", "codex")), "Twilio migration")
+
+    def test_title_for_skips_the_model_when_the_title_is_ready(self) -> None:
+        with mock.patch.object(titles, "ask_model", side_effect=AssertionError("must not ask")) as ask:
+            self.assertEqual(titles.title_for(self._ctx("Telnyx Migration")), ("Telnyx Migration", "own_title"))
+        ask.assert_not_called()
 
 
 class TranscriptTests(unittest.TestCase):
@@ -981,6 +1011,42 @@ class TranscriptTests(unittest.TestCase):
                 self.assertEqual(titles.transcript_path({"kind": "id", "value": "abc-123"}), claude)
                 self.assertEqual(titles.transcript_path({"kind": "id", "value": "missing"}), "")
             self.assertEqual(titles.transcript_path(None), "")
+
+
+class WaitForTabTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.env = mock.patch.dict(os.environ, {"HERDR_PLUGIN_STATE_DIR": self.tmp.name})
+        self.env.start()
+
+    def tearDown(self) -> None:
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def test_a_named_tab_returns_at_once(self) -> None:
+        client = mock.Mock()
+        client.call.return_value = {"tabs": [{"tab_id": "w0:t1", "label": "core-sms"}]}
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "run", side_effect=AssertionError("must not run a pass")
+        ), mock.patch.object(titles.time, "sleep", side_effect=AssertionError("must not wait")):
+            self.assertEqual(titles.wait_for_tab("w0:t1"), [])
+        client.snapshot.assert_not_called()
+
+    def test_a_closed_tab_returns_at_once(self) -> None:
+        client = mock.Mock()
+        client.call.return_value = {"tabs": []}
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "run", side_effect=AssertionError("must not run a pass")
+        ):
+            self.assertEqual(titles.wait_for_tab("w0:t1"), [])
+
+    def test_an_unnamed_tab_runs_a_pass(self) -> None:
+        client = mock.Mock()
+        client.call.return_value = {"tabs": [{"tab_id": "w0:t1", "label": "6"}]}
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "run", return_value=[("w0:t1", "Telnyx Migration")]
+        ):
+            self.assertEqual(titles.wait_for_tab("w0:t1"), [("w0:t1", "Telnyx Migration")])
 
 
 class TitlePassTests(unittest.TestCase):
@@ -1055,6 +1121,18 @@ class TitlePassTests(unittest.TestCase):
             client.snapshot.return_value = named
             titles.run()
         ask.assert_called_once()
+
+    def test_counters_record_what_happened(self) -> None:
+        client = self._client()
+        with mock.patch.object(titles.api, "client", return_value=client), mock.patch.object(
+            titles, "ask_model", return_value="Telnyx Migration"
+        ):
+            titles.run()
+        stats = titles.load_state().get("stats") or {}
+        self.assertEqual(stats.get("named"), 1)
+        self.assertEqual(stats.get("model_calls"), 1)
+        self.assertEqual(stats.get("named_by_model"), 1)
+        self.assertGreater(stats.get("last_named_ms", 0), 0)
 
     def test_dry_run_changes_nothing(self) -> None:
         client = self._client()
