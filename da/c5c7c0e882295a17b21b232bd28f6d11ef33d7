@@ -1,0 +1,34 @@
+hook.py
+  s_a76138135fc0a7::t_28258ee6e71aae 8,11,30-47,57,95-97
+  s_a76138135fc0a7::t_7dc24778d3c645 98
+titles.py
+  s_a76138135fc0a7::t_adbd99e8e838e0 1-159,175-177,179-191,193-194,196,204-253,270-274,281-301,306-307,309-310,313-340,343-395,398-402,411-496
+  s_a76138135fc0a7::t_26ee59c37dec58 160-174,178,192,195,197-203,254-269,275-280,302-305,308,311-312,341-342,396-397,403-410
+tests/test_drover.py
+  s_a76138135fc0a7::t_07146534d1ecdc 24,863-1054
+  s_a76138135fc0a7::t_cb4fab969c7cf7 1055-1056
+CHANGELOG.md
+  s_a76138135fc0a7::t_0fde6047444b9f 5-16
+herdr-plugin.toml
+  s_a76138135fc0a7::t_28258ee6e71aae 26-32,69-71
+  s_a76138135fc0a7::t_0fde6047444b9f 3,6
+  s_a76138135fc0a7::t_28aa7e065be148 72-73
+README.md
+  s_a76138135fc0a7::t_0fde6047444b9f 120-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dac5c7c0e882295a17b21b232bd28f6d11ef33d7",
+  "prompts": {},
+  "sessions": {
+    "s_a76138135fc0a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bec9446b-53a5-410b-9244-3bae255278d1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Brad Larson <followbl@gmail.com>"
+    }
+  }
+}
