@@ -117,7 +117,7 @@ Release-to-land uses `keyd listen` and a layer named `cmd`. If keyd is missing, 
 
 On macOS there is no keyd path. Use arrows / search / Enter.
 
-## Two-word tab names
+## Short tab names, written for you
 
 Herdr labels a tab you never named with its position, so a row reads `6`. The
 agent's own title is not always better: Claude writes a real task title, but pi
@@ -125,18 +125,20 @@ writes `π - metaintro`, which says only that pi is running somewhere you alread
 know about.
 
 Both keep a transcript on this machine, and its first human message says what
-the session is for. Drover reads that, has a small model condense it to **two
-words**, and names the tab:
+the session is for. Drover reads that, has a small model condense it to **three
+words or fewer**, and names the tab:
 
 | Session's first request | Name |
 |---|---|
 | can you please read f-twilio and come up with a full plan to move us over to telnyx | `Telnyx Migration` |
+| read the herdr tab refactor and tell me what is going on | `Herdr Tab Refactor` |
 | go through all core repos and audit the API layer | `API Audit` |
 | Read .audit/…/prompts/03.md completely and execute | `Error Contracts` |
 | look at the Cloudflare blog for everything they shipped last week | `Competitive Intelligence` |
 
-It runs on Herdr's startup and whenever a new agent is detected, in the
-background, one model call per session. The rules it will not break:
+It runs on Herdr's startup, whenever a new agent is detected, and when the
+overlay opens on a tab that is still a number -- in the background, one model
+call per session. The rules it will not break:
 
 - A tab **you** named is never touched, nor is one named by another plugin.
 - A name Drover wrote is replaced only by Drover, and only while it is still

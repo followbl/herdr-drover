@@ -25,7 +25,9 @@ from lib import (
     dlog,
     filter_items,
     fuzzy_score,
+    is_default_label,
     new_tab_item,
+    plugin_root,
     prompt_ms,
     prune_mru,
     relative_age,
@@ -102,6 +104,23 @@ def spawn_keyd() -> Any:
         )
     except OSError:
         return None
+
+
+def spawn_titler() -> None:
+    """Hand naming to its own process; a pass outlives this popup."""
+    import subprocess
+
+    try:
+        subprocess.Popen(
+            [sys.executable, os.path.join(plugin_root(), "titles.py")],
+            cwd=plugin_root(),
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        dlog("titler spawn failed", repr(exc))
 
 
 def spawn_detached(args: list[str]) -> None:
@@ -286,6 +305,27 @@ class Switcher:
             prune_mru(snap)
         except (api.ApiError, OSError, ValueError) as exc:
             dlog("prune failed", repr(exc))
+            return
+        self.start_titler(snap)
+
+    def start_titler(self, snap: dict[str, Any]) -> None:
+        """Name tabs Herdr only numbered, if any are open.
+
+        The event hook catches new agents, but an agent that started before
+        the plugin did has no event left to fire -- and the overlay is where
+        you notice the number anyway. Detached: naming waits on a model.
+        """
+        if (os.environ.get("DROVER_AI_TITLES") or "").strip().lower() == "off":
+            return
+        unnamed = [
+            tab
+            for tab in snap.get("tabs") or []
+            if isinstance(tab, dict) and is_default_label(str(tab.get("label") or ""))
+        ]
+        if not unnamed:
+            return
+        dlog("titler: ", len(unnamed), "unnamed tabs")
+        spawn_titler()
 
     def arm(self) -> None:
         """Super state is known: start honoring cycles, including any taps that beat us here."""

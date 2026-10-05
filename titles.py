@@ -7,7 +7,7 @@ title, but pi writes `π - metaintro`, which says only that pi is running
 somewhere you already know about.
 
 Both of them do keep a transcript on this machine, and its first human message
-says exactly what the session is for. So that message, condensed to two words
+says exactly what the session is for. So that message, condensed to three words
 by a small model, becomes the tab's name -- once, in the background, and only
 for tabs nobody has named.
 
@@ -43,8 +43,8 @@ import api
 from lib import dlog, is_default_label, lead_pane, state_dir
 
 DEFAULT_COMMAND = "claude -p --model haiku"
-MAX_WORDS = 2
-MAX_CHARS = 24
+MAX_WORDS = 3
+MAX_CHARS = 30
 PROMPT_CHARS = 600
 MODEL_TIMEOUT = 45.0
 PASS_LIMIT = 8
@@ -231,7 +231,7 @@ def tidy(candidate: str) -> str:
     return text
 
 
-def two_words(prompt: str) -> str:
+def short_name(prompt: str) -> str:
     """A name from the request itself, for when no model answers."""
     words: list[str] = []
     for raw in prompt.split():
@@ -273,7 +273,8 @@ def ask_model(prompt: str) -> str:
     """Two words from a small model, or an empty string if it will not."""
     instruction = (
         "Name this coding session so its owner recognizes it in a tab list.\n"
-        "Rules: at most two words, Title Case, no punctuation, no quotes.\n"
+        f"Rules: at most {MAX_WORDS} words, fewer when two say it, Title Case, "
+        "no punctuation, no quotes.\n"
         "Name the work, not the tool, the agent, the model or a file path. "
         "If the request only points at a file or a command, name what that work is about, "
         "using the session title and directory for context.\n"
@@ -309,7 +310,7 @@ def title_for(context: dict[str, Any], *, use_model: bool = True) -> str:
         if name:
             return name
     fallback = " ".join(context.get("prompts") or []) or str(context.get("title") or "")
-    return two_words(clean_prompt(fallback))
+    return short_name(clean_prompt(fallback))
 
 
 # -- the pass ------------------------------------------------------------------

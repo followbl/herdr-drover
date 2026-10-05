@@ -812,6 +812,31 @@ class PreviewSchedulingTests(unittest.TestCase):
         self.assertTrue(sw.preview_want)
 
 
+class TitlerTriggerTests(unittest.TestCase):
+    def _snap(self, labels: list) -> dict:
+        return {"tabs": [{"tab_id": f"t{i}", "label": label} for i, label in enumerate(labels)]}
+
+    def test_unnamed_tabs_start_a_pass(self) -> None:
+        sw = _fake_switcher()
+        with mock.patch.object(switcher, "spawn_titler") as spawn:
+            sw.start_titler(self._snap(["core-sms", "6"]))
+        spawn.assert_called_once()
+
+    def test_nothing_to_name_starts_nothing(self) -> None:
+        sw = _fake_switcher()
+        with mock.patch.object(switcher, "spawn_titler") as spawn:
+            sw.start_titler(self._snap(["core-sms", "ship"]))
+        spawn.assert_not_called()
+
+    def test_the_off_switch_is_honored(self) -> None:
+        sw = _fake_switcher()
+        with mock.patch.dict(os.environ, {"DROVER_AI_TITLES": "off"}), mock.patch.object(
+            switcher, "spawn_titler"
+        ) as spawn:
+            sw.start_titler(self._snap(["6"]))
+        spawn.assert_not_called()
+
+
 class RefreshTests(unittest.TestCase):
     SNAP = {
         "workspaces": [{"workspace_id": "w0", "label": "metaintro"}],
@@ -876,12 +901,13 @@ class TitleTextTests(unittest.TestCase):
         ):
             self.assertEqual(titles.tidy(answer), "", answer)
 
-    def test_tidy_keeps_at_most_two_words(self) -> None:
-        self.assertEqual(titles.tidy("Telnyx Migration Plan"), "Telnyx Migration")
+    def test_tidy_keeps_at_most_three_words(self) -> None:
+        self.assertEqual(titles.tidy("Telnyx Migration Plan"), "Telnyx Migration Plan")
+        self.assertEqual(titles.tidy("Plan The Telnyx Migration Now"), "")
 
     def test_heuristic_names_without_a_model(self) -> None:
-        self.assertEqual(titles.two_words("can you please migrate us from twilio to telnyx"), "Migrate Twilio")
-        self.assertEqual(titles.two_words("the and or if"), "")
+        self.assertEqual(titles.short_name("can you please migrate us from twilio to telnyx"), "Migrate Twilio Telnyx")
+        self.assertEqual(titles.short_name("the and or if"), "")
 
     def test_thin_requests_are_recognized(self) -> None:
         self.assertTrue(titles.is_thin("/effort ultracode"))
@@ -904,7 +930,7 @@ class TitleTextTests(unittest.TestCase):
     def test_falls_back_to_the_heuristic_when_the_model_declines(self) -> None:
         with mock.patch.object(titles, "ask_model", return_value=""):
             name = titles.title_for({"prompts": ["migrate us from twilio to telnyx"], "title": "", "cwd": ""})
-        self.assertEqual(name, "Migrate Twilio")
+        self.assertEqual(name, "Migrate Twilio Telnyx")
 
 
 class TranscriptTests(unittest.TestCase):
